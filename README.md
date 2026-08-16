@@ -1,7 +1,7 @@
 # 🧠 MEDIUM AI 경영 브리핑
 
 원무통계 · 심사평가 · 인력관리 · 재무제표 4대 시스템의 HTML 보고서를 업로드하면,
-Gemini AI가 데이터를 **교차 분석**하여 병원장이 바로 볼 수 있는 프리미엄
+경영 맞춤 AI가 데이터를 **교차 분석**하여 병원장이 바로 볼 수 있는 프리미엄
 "AI 경영 브리핑" 리포트를 자동 생성하는 유료 전용 Streamlit 애플리케이션입니다.
 
 ---
@@ -16,7 +16,8 @@ Gemini AI가 데이터를 **교차 분석**하여 병원장이 바로 볼 수 �
 - 심사평가의 삭감이 특정 진료과에 집중되고, 그 진료과의 원무통계 비중은 어떤가?
 
 이런 교차 분석 결과를 포함한 결과물은 **오프라인에서도 완벽하게 열리는 단일
-HTML 파일**로 저장되어, 인쇄(PDF 저장)해서 원장님께 바로 보고할 수 있습니다.
+HTML 파일**로 저장되며, 리포트 내에서 바로 **PDF/JPG로 저장**하거나 인쇄해서
+원장님께 보고할 수 있습니다.
 
 ---
 
@@ -26,14 +27,18 @@ HTML 파일**로 저장되어, 인쇄(PDF 저장)해서 원장님께 바로 보�
 ai_briefing_app/
 ├── app.py                      # 진입점 (st.navigation)
 ├── requirements.txt
+├── .gitignore
 ├── .streamlit/
-│   └── config.toml             # 테마 설정
+│   ├── config.toml             # 테마 설정
+│   └── secrets.toml.example    # 시크릿 설정 예시 (복사해서 secrets.toml로 사용)
 ├── core/
 │   ├── parsers.py              # 4대 시스템 HTML → 구조화 데이터 파싱
-│   ├── ai_engine.py            # Gemini API 연동 (모델 자동 폴백 체인)
-│   ├── report_builder.py       # 프리미엄 HTML 브리핑 리포트 생성
+│   ├── ai_engine.py            # AI 연동 엔진 (모델 자동 폴백 체인)
+│   ├── report_builder.py       # 프리미엄 HTML 브리핑 생성 (PDF/JPG 저장 포함)
 │   ├── storage.py              # 브리핑 보관함 (파일 기반)
-│   └── auth.py                 # 유료 라이선스 키 게이트
+│   ├── auth.py                 # 유료 라이선스 키 게이트
+│   └── vendor/
+│       └── html2canvas.min.js  # JPG 저장용 라이브러리 (리포트에 인라인 번들링됨)
 ├── views/
 │   ├── briefing_generator.py   # 새 브리핑 생성 페이지
 │   ├── archive.py              # 보관함 페이지
@@ -51,9 +56,9 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-### Gemini API 키 설정
+### API 키 설정
 좌측 메뉴 **API · 환경 설정**에서 직접 입력하거나, 배포 시에는
-`.streamlit/secrets.toml`에 아래처럼 등록하세요.
+`.streamlit/secrets.toml.example`을 `secrets.toml`로 복사한 뒤 값을 채우세요.
 
 ```toml
 GEMINI_API_KEY = "AIza..."
@@ -62,11 +67,19 @@ GEMINI_API_KEY = "AIza..."
 LICENSE_KEYS = ["MEDIUM-XXXX-XXXX", "MEDIUM-YYYY-YYYY"]
 ```
 
+> `secrets.toml`은 `.gitignore`에 등록되어 있어 git에 실수로 커밋되지 않습니다.
+> GitHub에 올려 Streamlit Cloud로 배포하는 경우 반드시 이 파일 없이 커밋하고,
+> Streamlit Cloud의 "Secrets" 설정 화면에 동일한 내용을 입력하세요.
+
 ### 모델 자동 폴백
-기본 체인은 `gemini-3.6-flash → gemini-3.5-flash-lite` 이며, 1순위 모델의
-사용량이 초과되면(429/RESOURCE_EXHAUSTED) 자동으로 다음 모델로 전환됩니다.
-**API · 환경 설정** 페이지에서 순서를 자유롭게 편집할 수 있습니다
+내부적으로는 `gemini-3.6-flash → gemini-3.5-flash-lite` 순서로 시도하며,
+1순위 모델의 사용량이 초과되면(429/RESOURCE_EXHAUSTED) 자동으로 다음 모델로
+전환됩니다. **API · 환경 설정** 페이지에서 순서를 자유롭게 편집할 수 있습니다
 (`gemini-2.5-flash`, `gemini-2.0-flash` 등 추가 폴백도 기본 제공).
+
+> 고객에게 노출되는 리포트/가이드 화면에는 실제 모델명이 아닌
+> **"경영 맞춤 AI"** 라는 브랜딩된 명칭만 표시됩니다. 실제 모델명은
+> 컨설턴트 전용 설정 화면(`API · 환경 설정`)에서만 확인할 수 있습니다.
 
 ---
 
@@ -98,20 +111,28 @@ LICENSE_KEYS = ["MEDIUM-XXXX-XXXX", "MEDIUM-YYYY-YYYY"]
 
 ---
 
-## 🎨 리포트 디자인 톤
+## 🎨 리포트 디자인 & 저장 기능
 
 기존 4개 시스템 리포트의 브랜드 톤(딥 네이비 + 티얼 그린, Pretendard)을
 계승하되, "AI가 만든 상위 브리핑"이라는 인상을 위해 골드 포인트 컬러,
 글래스모피즘 커버, SVG 도넛 게이지, 교차 인사이트 카드 등을 추가해 한 단계
-더 고급스러운 톤으로 구성했습니다. 외부 JS 의존성 없이 순수 SVG/CSS로만
-그려 오프라인에서도 완벽하게 열립니다.
+더 고급스러운 톤으로 구성했습니다.
+
+- **화면 표시**: 넓은 화면에서도 여백 없이 꽉 차게 표시 (`max-width: 1320px, 96%`)
+- **인쇄(PDF)**: 리포트 우측 상단 **"🖨️ PDF로 저장"** 버튼 → 브라우저 인쇄
+  다이얼로그에서 "PDF로 저장" 선택. `@page A4` 설정으로 인쇄 시에는 별도
+  여백 규격이 자동 적용됩니다.
+- **JPG 저장**: **"🖼️ JPG로 저장"** 버튼 → `html2canvas` 라이브러리로 리포트
+  전체를 캡처해 JPG로 다운로드. 이 라이브러리는 CDN이 아니라 **리포트
+  HTML 파일 안에 통째로 인라인 번들링**되어 있어, 인터넷 연결 없이 로컬
+  파일(`file://`)로 열어도 정상 작동합니다.
 
 ---
 
 ## ⚠️ 참고 사항
 
-- 이 저장소에는 실제 Gemini API 키가 포함되어 있지 않습니다. 반드시 본인의
-  키를 발급받아 설정하세요.
+- 이 저장소에는 실제 API 키가 포함되어 있지 않습니다. 반드시 본인의
+  키를 발급받아 `secrets.toml`에 설정하세요.
 - `core/ai_engine.py`는 `google-genai` SDK를 사용합니다
   (`pip install google-genai`).
 - 라이선스 게이트(`core/auth.py`)는 간단한 키 대조 방식입니다. 실제 결제
