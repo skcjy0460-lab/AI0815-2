@@ -5,7 +5,7 @@ app.py
 MEDIUM AI 경영 브리핑 — 진입점
 
 기존 4대 시스템(원무통계 / 심사평가 / 인력관리 / 재무제표) 보고서(HTML)를
-업로드하면, Gemini AI가 교차 분석하여 병원장이 바로 볼 수 있는 프리미엄
+업로드하면, 경영 맞춤 AI가 교차 분석하여 병원장이 바로 볼 수 있는 프리미엄
 'AI 경영 브리핑' 리포트를 생성하는 유료 전용 Streamlit 애플리케이션.
 """
 
@@ -35,7 +35,7 @@ st.markdown(
     </style>
     <div class="medium-sidebar-brand">
       <b>🧠 MEDIUM AI 경영 브리핑</b>
-      <span>PREMIUM · POWERED BY GEMINI</span>
+      <span>PREMIUM · POWERED BY 경영 맞춤 AI</span>
     </div>
     """,
     unsafe_allow_html=True,
