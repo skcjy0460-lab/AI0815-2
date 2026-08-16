@@ -19,9 +19,29 @@ from __future__ import annotations
 import html as _html
 import math
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from core.parsers import ParsedReport, REPORT_TYPES
+
+# 리포트에 노출되는 분석 엔진 표기명 (실제 사용된 Gemini 모델명은 내부 로그/보관함
+# 메타데이터에만 남기고, 고객에게 보여지는 문서에는 브랜딩된 명칭만 사용한다)
+ENGINE_DISPLAY_NAME = "경영 맞춤 AI"
+
+_VENDOR_DIR = Path(__file__).resolve().parent / "vendor"
+_HTML2CANVAS_CACHE: str | None = None
+
+
+def _load_html2canvas_js() -> str:
+    """JPG 저장 기능에 쓰이는 html2canvas 라이브러리를 인라인으로 번들링.
+    외부 CDN 없이도(오프라인 열람 시에도) 리포트 파일 하나로 완결되도록 한다."""
+    global _HTML2CANVAS_CACHE
+    if _HTML2CANVAS_CACHE is None:
+        try:
+            _HTML2CANVAS_CACHE = (_VENDOR_DIR / "html2canvas.min.js").read_text(encoding="utf-8")
+        except Exception:
+            _HTML2CANVAS_CACHE = ""  # 파일이 없으면 JPG 저장 버튼은 비활성 안내만 표시
+    return _HTML2CANVAS_CACHE
 
 
 MODULE_META = {
@@ -55,6 +75,13 @@ GRADE_COLOR = {
 
 def esc(x: Any) -> str:
     return _html.escape(str(x)) if x is not None else ""
+
+
+def _js_str(x: str) -> str:
+    """파이썬 문자열을 안전한 JS 문자열 리터럴로 변환."""
+    import json as _json
+
+    return _json.dumps(x or "")
 
 
 def _donut_svg(score: int, grade: str) -> str:
@@ -293,12 +320,17 @@ def build_html_report(
       <p class="cover-sub">{esc(hospital_name) or '병원'} · {esc(period_label) or '분석 기간 미지정'}</p>
       <div class="cover-meta">
         <span>생성일 {generated_at.strftime('%Y.%m.%d %H:%M')}</span>
-        <span>분석 엔진 {esc(model_used) or 'Gemini AI'}</span>
+        <span>분석 엔진 : {ENGINE_DISPLAY_NAME}</span>
         {f'<span>담당 컨설턴트 {esc(consultant_name)}</span>' if consultant_name else ''}
       </div>
       <div class="source-badges">{source_badges}</div>
     </div>
   </header>
+
+  <div class="brief-toolbar no-print">
+    <button type="button" class="toolbar-btn pdf" onclick="medBriefSavePDF()">🖨️ PDF로 저장</button>
+    <button type="button" class="toolbar-btn jpg" id="medBriefJpgBtn" onclick="medBriefSaveJPG()">🖼️ JPG로 저장</button>
+  </div>
 
   <section class="brief-hero-grid">
     <article class="hero-score-card">
@@ -349,10 +381,48 @@ def build_html_report(
     <p>본 보고서는 MEDIUM GUIDE AI 경영 브리핑 시스템이 업로드된 원무통계 · 심사평가 · 인력관리 ·
       재무제표 데이터를 기반으로 자동 생성한 유료 컨설팅 산출물입니다. 실제 경영 의사결정 전
       원자료와 함께 검토하시기 바랍니다.</p>
-    <p class="copyright">ⓒ MEDIUM Co. · 무단 전재 및 재배포를 금지합니다 · 분석 엔진: {esc(model_used)}</p>
+    <p class="copyright">ⓒ MEDIUM Co. · 무단 전재 및 재배포를 금지합니다 · 분석 엔진 : {ENGINE_DISPLAY_NAME}</p>
   </footer>
 
 </div>
+
+<script>
+{_load_html2canvas_js()}
+</script>
+<script>
+(function () {{
+  var FILE_BASE = {_js_str(f"AI경영브리핑_{hospital_name or '병원'}_{generated_at.strftime('%Y%m%d')}")};
+
+  window.medBriefSavePDF = function () {{
+    window.print();
+  }};
+
+  window.medBriefSaveJPG = function () {{
+    var target = document.getElementById('aiBriefRoot');
+    var btn = document.getElementById('medBriefJpgBtn');
+    var toolbar = document.querySelector('.brief-toolbar');
+    if (typeof html2canvas === 'undefined') {{
+      alert('JPG 저장 모듈을 불러오지 못했습니다. 인터넷 연결 상태를 확인하거나 PDF로 저장을 이용해주세요.');
+      return;
+    }}
+    var originalText = btn ? btn.textContent : '';
+    if (btn) {{ btn.textContent = '⏳ 저장 중...'; btn.disabled = true; }}
+    if (toolbar) toolbar.style.visibility = 'hidden';
+    html2canvas(target, {{ scale: 2, useCORS: true, backgroundColor: '#eef2f5' }}).then(function (canvas) {{
+      if (toolbar) toolbar.style.visibility = 'visible';
+      if (btn) {{ btn.textContent = originalText; btn.disabled = false; }}
+      var link = document.createElement('a');
+      link.download = FILE_BASE + '.jpg';
+      link.href = canvas.toDataURL('image/jpeg', 0.95);
+      link.click();
+    }}).catch(function (err) {{
+      if (toolbar) toolbar.style.visibility = 'visible';
+      if (btn) {{ btn.textContent = originalText; btn.disabled = false; }}
+      alert('JPG 저장 중 오류가 발생했습니다: ' + err);
+    }});
+  }};
+}})();
+</script>
 </body>
 </html>"""
 
@@ -365,7 +435,21 @@ body {
   font-family: Pretendard, 'Noto Sans KR', 'Malgun Gothic', Arial, sans-serif;
   font-size: 13px; line-height: 1.62;
 }
-.ai-brief-wrap { max-width: 1040px; margin: 0 auto; padding: 28px 22px 60px; }
+.ai-brief-wrap { max-width: 1320px; width: 96%; margin: 0 auto; padding: 22px 0 46px; }
+
+/* ---------- Floating toolbar (PDF/JPG 저장) ---------- */
+.brief-toolbar {
+  display: flex; justify-content: flex-end; gap: 8px; margin: 10px 0 4px;
+}
+.toolbar-btn {
+  font-family: inherit; font-size: 12.5px; font-weight: 800; color: #0b1f33;
+  background: #fff; border: 1px solid #d8e3e5; border-radius: 999px; padding: 8px 16px;
+  cursor: pointer; box-shadow: 0 6px 16px rgba(11,31,51,.08); transition: transform .12s ease;
+}
+.toolbar-btn:hover { transform: translateY(-1px); }
+.toolbar-btn.pdf { border-color: #0f6e63; color: #0f6e63; }
+.toolbar-btn.jpg { border-color: #b8860b; color: #8a6408; }
+.toolbar-btn:disabled { opacity: .6; cursor: progress; transform: none; }
 
 /* ---------- Cover ---------- */
 .brief-cover {
@@ -519,7 +603,9 @@ li.muted { color: #b0bac2; }
 
 @media print {
   body { background: #fff; }
+  .ai-brief-wrap { max-width: 100%; width: 100%; padding: 0; }
   .brief-cover { box-shadow: none; }
+  .no-print, .brief-toolbar { display: none !important; }
   .kpi-grid, .cross-grid, .sr-grid, .module-grid, .road-grid { break-inside: avoid; }
   .module-card, .cross-card, .sr-item { break-inside: avoid; }
 }
@@ -528,5 +614,6 @@ li.muted { color: #b0bac2; }
   .kpi-grid { grid-template-columns: repeat(2,1fr); }
   .road-grid { grid-template-columns: 1fr 1fr; }
   .checkpoint-list { grid-template-columns: 1fr; }
+  .brief-toolbar { justify-content: center; }
 }
 """
