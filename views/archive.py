@@ -41,7 +41,7 @@ else:
                     pass
                 st.caption(f"🕒 {created}")
             with top[3]:
-                st.caption(f"🤖 {rec.get('model_used','-')}")
+                st.caption(f"🤖 경영 맞춤 AI")
 
             btn_cols = st.columns([1, 1, 1, 5])
             with btn_cols[0]:
